@@ -7,24 +7,24 @@ import (
 	"fmt"
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"jrmd.dev/qk/views"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // buildCmd represents the build command
 var buildCmd = &cobra.Command{
-	Use:   "build",
-  Aliases: []string{"b"},
-  Short: "Runs yarn build:prod across all projects",
+	Use:     "build",
+	Aliases: []string{"b"},
+	Short:   "Runs yarn build:prod across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
-    m := views.CreateCommandRunner()
-    m.AddCommand(RenderCommand("yarn"), "yarn", "build:prod")
+		m := views.CreateCommandRunner()
+		m.AddCommand(RenderCommand("yarn"), "yarn", "build:prod")
 
-    if _, err := tea.NewProgram(m).Run(); err != nil {
-      fmt.Println("could not run program:", err)
-      os.Exit(1)
-    }
+		if _, err := tea.NewProgram(m).Run(); err != nil {
+			fmt.Println("could not run program:", err)
+			os.Exit(1)
+		}
 
 	},
 }

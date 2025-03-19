@@ -1,4 +1,3 @@
-
 /*
 Copyright © 2025 Jerome Duncan <jerome@jrmd.dev>
 */
@@ -8,24 +7,24 @@ import (
 	"fmt"
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"jrmd.dev/qk/views"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // buildCmd represents the build command
 var watchCommand = &cobra.Command{
-	Use:   "watch",
-  Aliases: []string{"w"},
-  Short: "Runs yarn start across all projects",
+	Use:     "watch",
+	Aliases: []string{"w"},
+	Short:   "Runs yarn start across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
-    m := views.CreateCommandRunner()
-    m.AddCommand(RenderCommand("yarn"), "yarn", "start")
+		m := views.CreateCommandRunner()
+		m.AddCommand(RenderCommand("yarn"), "yarn", "start")
 
-    if _, err := tea.NewProgram(m).Run(); err != nil {
-      fmt.Println("could not run program:", err)
-      os.Exit(1)
-    }
+		if _, err := tea.NewProgram(m).Run(); err != nil {
+			fmt.Println("could not run program:", err)
+			os.Exit(1)
+		}
 
 	},
 }
