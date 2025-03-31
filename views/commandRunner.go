@@ -4,9 +4,13 @@ Copyright © 2025 Jerome Duncan <jerome@jrmd.dev>
 package views
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
+	"syscall"
 	"time"
 
 	"jrmd.dev/qk/utils"
@@ -117,14 +121,84 @@ type programDoneMessage struct {
 	err     error
 }
 
-func runCommand(projIndex int, project Project, scriptIndex int, command string, args ...string) tea.Cmd {
-	c := exec.Command(command, args...) //nolint:gosec
-	c.Dir = project.dir
-	c.Stdout = nil
+func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project Project, scriptIndex int, command string, args ...string) tea.Cmd {
 	return func() tea.Msg {
-		err := c.Run()
-		return commandFinishedMessage{projIndex, scriptIndex, err}
+		// Decrement the counter when the command function finishes,
+		// regardless of success, failure, or cancellation.
+		defer wg.Done()
+
+		// Create the command with the context
+		c := exec.CommandContext(ctx, command, args...) //nolint:gosec
+		c.Dir = project.dir
+		c.Stdout = nil
+		c.Stderr = nil
+		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+		err := c.Start()
+		if err != nil {
+			return commandFinishedMessage{projIndex, scriptIndex, err}
+		}
+
+		pid := c.Process.Pid
+
+		waitChan := make(chan error, 1)
+		go func() {
+			select {
+			case <-ctx.Done():
+				_ = syscall.Kill(-pid, syscall.SIGTERM) // Ignore error for simplicity here, add checks if needed
+				time.Sleep(100 * time.Millisecond)      // Give grace period
+				_ = syscall.Kill(-pid, syscall.SIGKILL) // Force kill
+				waitChan <- ctx.Err()
+
+			case errWait := <-waitChan:
+				// Forward result from c.Wait()
+				waitChan <- errWait
+				return
+			}
+		}()
+
+		errWait := c.Wait()
+		// Send the result from c.Wait() to the select goroutine.
+		// If context was cancelled first, this send might block briefly until
+		// the ctx.Done() case reads from waitChan, but that's okay.
+		waitChan <- errWait
+
+		// Read the prioritized result (either ctx.Err() or errWait)
+		finalErr := <-waitChan
+
+		return commandFinishedMessage{projIndex, scriptIndex, finalErr}
 	}
+}
+
+// Function to check if an error indicates a signal kill
+func wasKilledBySignal(err error) (bool, syscall.Signal) {
+	if err == nil {
+		return false, 0 // No error, wasn't killed
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		// Error is an ExitError, now check the process state
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
+		if !ok {
+			// This should not happen on Unix-like systems if it's an ExitError
+			// Might happen on Windows or other OSes where Sys() has a different type
+			// Fallback: Check if ExitCode is -1, often indicates signal on Unix
+			// or abnormal termination elsewhere. Less reliable than WaitStatus.
+			if exitErr.ProcessState != nil && exitErr.ProcessState.ExitCode() == -1 {
+				return true, 0 // Indicate killed, but signal unknown
+			}
+			return false, 0
+		}
+
+		// Check if the process was signaled
+		if status.Signaled() {
+			return true, status.Signal() // Return true and the specific signal
+		}
+	}
+
+	// Error is not an ExitError or process exited normally (even if non-zero)
+	return false, 0
 }
 
 func done(success bool) tea.Cmd {
@@ -161,6 +235,9 @@ type model struct {
 	stopwatch     stopwatch.Model
 	showStopwatch bool
 	showScripts   bool
+	ctx           context.Context
+	cancel        context.CancelFunc
+	cmdWg         sync.WaitGroup // Add WaitGroup to track running commands
 }
 
 func CreateCommandRunner() model {
@@ -186,7 +263,7 @@ func CreateCommandRunner() model {
 	}
 
 	conf := utils.GetConfig()
-
+	ctx, cancel := context.WithCancel(context.Background())
 	return model{
 		projects:      projs,
 		start:         time.Now(),
@@ -197,10 +274,12 @@ func CreateCommandRunner() model {
 		help:          help.New(),
 		showStopwatch: conf.ShowTimer,
 		showScripts:   conf.ShowScripts,
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
-func (m model) AddCommand(render func(Command) string, script string, args ...string) model {
+func (m *model) AddCommand(render func(Command) string, script string, args ...string) *model {
 	cmd := Command{script, args, "running", render}
 	for i := range m.projects {
 		m.projects[i].scripts = append(m.projects[i].scripts, cmd)
@@ -208,16 +287,19 @@ func (m model) AddCommand(render func(Command) string, script string, args ...st
 	return m
 }
 
-func (m model) Init() tea.Cmd {
+func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		m.stopwatch.Init(),
 	}
 	for i, proj := range m.projects {
 		cmds = append(cmds, proj.spinner.Tick)
 		for j, script := range proj.scripts {
+			m.cmdWg.Add(1)
 			cmds = append(
 				cmds,
 				runCommand(
+					m.ctx,
+					&m.cmdWg,
 					i,
 					proj,
 					j,
@@ -231,7 +313,7 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var stopwatchCmd tea.Cmd
 	m.stopwatch, stopwatchCmd = m.stopwatch.Update(msg)
 	switch msg := msg.(type) {
@@ -244,6 +326,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 		case key.Matches(msg, m.keys.Quit):
+			m.cancel()
+			m.cmdWg.Wait()
 			return m, tea.Quit
 		}
 		return m, stopwatchCmd
@@ -262,6 +346,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		status := "finished"
 		if msg.err != nil {
 			status = "failed"
+
+			wasKilled, _ := wasKilledBySignal(msg.err)
+
+			if wasKilled {
+				status = "exited"
+			}
 		}
 
 		m.projects[msg.index].scripts[msg.scriptIndex].status = status
@@ -287,6 +377,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(done(success), stopwatchCmd)
 	case programDoneMessage:
+		m.cancel()
+		m.cmdWg.Wait()
 		return m, tea.Quit
 
 	default:
@@ -294,7 +386,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m model) View() (s string) {
+func (m *model) View() (s string) {
 	gap := " "
 
 	s += fmt.Sprintf("%s  %s\n\n", title.Render("QK Command Runner"), subtitle.Render("v0.1.0"))

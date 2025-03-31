@@ -30,7 +30,7 @@ var cmdCmd = &cobra.Command{
 		m := views.CreateCommandRunner()
 		m.AddCommand(RenderCommand(c), c, arg...)
 
-		if _, err := tea.NewProgram(m).Run(); err != nil {
+		if _, err := tea.NewProgram(&m).Run(); err != nil {
 			fmt.Println("could not run program:", err)
 			os.Exit(1)
 		}

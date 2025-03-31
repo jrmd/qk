@@ -21,7 +21,7 @@ var buildCmd = &cobra.Command{
 		m := views.CreateCommandRunner()
 		m.AddCommand(RenderCommand("yarn"), "yarn", "build:prod")
 
-		if _, err := tea.NewProgram(m).Run(); err != nil {
+		if _, err := tea.NewProgram(&m).Run(); err != nil {
 			fmt.Println("could not run program:", err)
 			os.Exit(1)
 		}

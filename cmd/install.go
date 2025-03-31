@@ -50,7 +50,7 @@ var installCmd = &cobra.Command{
 		m.AddCommand(RenderCommand("yarn"), "yarn").
 			AddCommand(RenderCommand("composer"), "composer", "install")
 
-		if _, err := tea.NewProgram(m).Run(); err != nil {
+		if _, err := tea.NewProgram(&m).Run(); err != nil {
 			fmt.Println("could not run program:", err)
 			os.Exit(1)
 		}
