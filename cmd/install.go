@@ -25,8 +25,8 @@ var (
 	errorText     = lipgloss.NewStyle().Foreground(errColor)
 )
 
-func RenderCommand(name string) func(views.Command) string {
-	return func(c views.Command) string {
+func RenderCommand(name string) func(*views.Command) string {
+	return func(c *views.Command) string {
 		stat := c.Status()
 		status := stat
 		switch stat {

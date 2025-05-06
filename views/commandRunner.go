@@ -4,6 +4,8 @@ Copyright © 2025 Jerome Duncan <jerome@jrmd.dev>
 package views
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -73,6 +75,7 @@ var (
 type keyMap struct {
 	Scripts key.Binding
 	Timer   key.Binding
+	Debug   key.Binding
 	Help    key.Binding
 	Quit    key.Binding
 }
@@ -87,8 +90,8 @@ func (k keyMap) ShortHelp() []key.Binding {
 // key.Map interface.
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Scripts, k.Timer}, // first column
-		{k.Help, k.Quit},     // second column
+		{k.Debug, k.Scripts, k.Timer}, // first column
+		{k.Help, k.Quit},              // second column
 	}
 }
 
@@ -100,6 +103,10 @@ var keys = keyMap{
 	Timer: key.NewBinding(
 		key.WithKeys("t"),
 		key.WithHelp("t", "toggle timer"),
+	),
+	Debug: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "toggle debug"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
@@ -121,20 +128,27 @@ type programDoneMessage struct {
 	err     error
 }
 
-func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project Project, scriptIndex int, command string, args ...string) tea.Cmd {
+func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project Project, scriptIndex int, command *Command) tea.Cmd {
 	return func() tea.Msg {
 		// Decrement the counter when the command function finishes,
 		// regardless of success, failure, or cancellation.
 		defer wg.Done()
 
 		// Create the command with the context
-		c := exec.CommandContext(ctx, command, args...) //nolint:gosec
+		c := exec.CommandContext(ctx, command.script, command.args...) //nolint:gosec
 		c.Dir = project.dir
-		c.Stdout = nil
 		c.Stderr = nil
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-		err := c.Start()
+		cmdReader, err := c.StdoutPipe()
+		if err != nil {
+			return commandFinishedMessage{projIndex, scriptIndex, err}
+		}
+
+		scanner := bufio.NewScanner(cmdReader)
+		command.reader = scanner
+
+		err = c.Start()
 		if err != nil {
 			return commandFinishedMessage{projIndex, scriptIndex, err}
 		}
@@ -211,7 +225,11 @@ type Command struct {
 	script string
 	args   []string
 	status string
-	render func(Command) string
+	ctx    context.Context
+	cancel context.CancelFunc
+	output *bytes.Buffer
+	render func(*Command) string
+	reader *bufio.Scanner
 }
 
 func (c Command) Status() string {
@@ -222,7 +240,7 @@ type Project struct {
 	spinner spinner.Model
 	name    string
 	dir     string
-	scripts []Command
+	scripts []*Command
 }
 
 type model struct {
@@ -235,6 +253,7 @@ type model struct {
 	stopwatch     stopwatch.Model
 	showStopwatch bool
 	showScripts   bool
+	showStdout    bool
 	ctx           context.Context
 	cancel        context.CancelFunc
 	cmdWg         sync.WaitGroup // Add WaitGroup to track running commands
@@ -258,7 +277,7 @@ func CreateCommandRunner() model {
 			s,
 			project.Name,
 			project.Dir,
-			[]Command{},
+			[]*Command{},
 		})
 	}
 
@@ -279,8 +298,9 @@ func CreateCommandRunner() model {
 	}
 }
 
-func (m *model) AddCommand(render func(Command) string, script string, args ...string) *model {
-	cmd := Command{script, args, "running", render}
+func (m *model) AddCommand(render func(*Command) string, script string, args ...string) *model {
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := &Command{script, args, "running", ctx, cancel, bytes.NewBuffer([]byte{}), render, nil}
 	for i := range m.projects {
 		m.projects[i].scripts = append(m.projects[i].scripts, cmd)
 	}
@@ -298,13 +318,12 @@ func (m *model) Init() tea.Cmd {
 			cmds = append(
 				cmds,
 				runCommand(
-					m.ctx,
+					script.ctx,
 					&m.cmdWg,
 					i,
 					proj,
 					j,
-					script.script,
-					script.args...,
+					m.projects[i].scripts[j],
 				),
 			)
 
@@ -323,10 +342,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showScripts = !m.showScripts
 		case key.Matches(msg, m.keys.Timer):
 			m.showStopwatch = !m.showStopwatch
+		case key.Matches(msg, m.keys.Debug):
+			m.showStdout = !m.showStdout
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 		case key.Matches(msg, m.keys.Quit):
-			m.cancel()
+			m.CancelScripts()
 			m.cmdWg.Wait()
 			return m, tea.Quit
 		}
@@ -356,34 +377,45 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.projects[msg.index].scripts[msg.scriptIndex].status = status
 		success := true
+		m.done = true
 
 		if utils.Some(m.projects, func(project Project) bool {
-			return utils.Some(project.scripts, func(script Command) bool {
+			return utils.Some(project.scripts, func(script *Command) bool {
 				return script.status == "running"
 			})
 		}) {
+			m.done = false
 			return m, nil
 		}
 
 		if utils.Some(m.projects, func(project Project) bool {
-			return utils.Some(project.scripts, func(script Command) bool {
+			return utils.Some(project.scripts, func(script *Command) bool {
 				return script.status == "failed"
 			})
 		}) {
 			success = false
 		}
 
-		m.done = true
+		if ! m.done {
+			return m, stopwatchCmd
+		}
 
 		return m, tea.Batch(done(success), stopwatchCmd)
 	case programDoneMessage:
-		m.cancel()
-		m.cmdWg.Wait()
+		m.CancelScripts()
 		return m, tea.Quit
-
 	default:
 		return m, stopwatchCmd
 	}
+}
+
+func (m *model) CancelScripts() {
+	for _, p := range m.projects {
+		for _, c := range p.scripts {
+			c.cancel()
+		}
+	}
+
 }
 
 func (m *model) View() (s string) {
@@ -392,10 +424,10 @@ func (m *model) View() (s string) {
 	s += fmt.Sprintf("%s  %s\n\n", title.Render("QK Command Runner"), subtitle.Render("v0.1.0"))
 
 	for _, proj := range m.projects {
-		allFinished := utils.All(proj.scripts, func(script Command) bool {
+		allFinished := utils.All(proj.scripts, func(script *Command) bool {
 			return script.status == "failed" || script.status == "finished"
 		})
-		hasError := utils.Some(proj.scripts, func(script Command) bool {
+		hasError := utils.Some(proj.scripts, func(script *Command) bool {
 			return script.status == "failed"
 		})
 		spin := proj.spinner.View()
@@ -412,16 +444,23 @@ func (m *model) View() (s string) {
 		}
 
 		s += fmt.Sprintf("%s%s%s\n", spin, gap, name)
-		if (!allFinished || hasError) && (m.showScripts || m.done) {
+		if ((!allFinished || hasError) && (m.showScripts || m.done)) || m.showStdout {
 			for i, script := range proj.scripts {
-				if i > 0 {
-					s += divider
+				if m.done || m.showScripts {
+					if i > 0 {
+						s += divider
+					}
+					s += fmt.Sprintf("   %s", script.render(script))
 				}
-				s += fmt.Sprintf("   %s", script.render(script))
 			}
 			s += "\n"
 		}
 	}
+
+	if m.showStdout {
+		s += "showing stdout\n"
+	}
+
 	if m.done {
 		s += fmt.Sprintf("\nFinished in %s\n", time.Since(m.start))
 	} else if m.showStopwatch {
