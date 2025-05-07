@@ -396,7 +396,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			success = false
 		}
 
-		if ! m.done {
+		if !m.done {
 			return m, stopwatchCmd
 		}
 
