@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"jrmd.dev/qk/types"
 	"jrmd.dev/qk/utils"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -128,15 +129,15 @@ type programDoneMessage struct {
 	err     error
 }
 
-func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project Project, scriptIndex int, command *Command) tea.Cmd {
+func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project types.Project, scriptIndex int, command *types.Command) tea.Cmd {
 	return func() tea.Msg {
 		// Decrement the counter when the command function finishes,
 		// regardless of success, failure, or cancellation.
 		defer wg.Done()
 
 		// Create the command with the context
-		c := exec.CommandContext(ctx, command.script, command.args...) //nolint:gosec
-		c.Dir = project.dir
+		c := exec.CommandContext(ctx, command.Script, command.Args...) //nolint:gosec
+		c.Dir = project.Dir
 		c.Stderr = nil
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -146,7 +147,7 @@ func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project 
 		}
 
 		scanner := bufio.NewScanner(cmdReader)
-		command.reader = scanner
+		command.Reader = scanner
 
 		err = c.Start()
 		if err != nil {
@@ -221,30 +222,8 @@ func done(success bool) tea.Cmd {
 	}
 }
 
-type Command struct {
-	script string
-	args   []string
-	status string
-	ctx    context.Context
-	cancel context.CancelFunc
-	output *bytes.Buffer
-	render func(*Command) string
-	reader *bufio.Scanner
-}
-
-func (c Command) Status() string {
-	return c.status
-}
-
-type Project struct {
-	spinner spinner.Model
-	name    string
-	dir     string
-	scripts []*Command
-}
-
 type model struct {
-	projects      []Project
+	projects      []types.Project
 	start         time.Time
 	finish        time.Time
 	done          bool
@@ -267,17 +246,17 @@ func CreateCommandRunner() model {
 
 	projects := utils.GetAllProjects(wd, 0)
 
-	projs := []Project{}
+	projs := []types.Project{}
 
 	for _, project := range projects {
 		s := spinner.New()
 		s.Spinner = spinner.Dot
 		s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-		projs = append(projs, Project{
-			s,
-			project.Name,
-			project.Dir,
-			[]*Command{},
+		projs = append(projs, types.Project{
+			Spinner: s,
+			Name:    project.Name,
+			Dir:     project.Dir,
+			Scripts: []*types.Command{},
 		})
 	}
 
@@ -298,11 +277,23 @@ func CreateCommandRunner() model {
 	}
 }
 
-func (m *model) AddCommand(render func(*Command) string, script string, args ...string) *model {
-	ctx, cancel := context.WithCancel(context.Background())
-	cmd := &Command{script, args, "running", ctx, cancel, bytes.NewBuffer([]byte{}), render, nil}
+func (m *model) AddCommand(render func(*types.Command) string, script string, args ...string) *model {
 	for i := range m.projects {
-		m.projects[i].scripts = append(m.projects[i].scripts, cmd)
+		ctx, cancel := context.WithCancel(context.Background())
+		cmd := &types.Command{Script: script, Args: args, Status: "running", Ctx: ctx, Cancel: cancel, Output: bytes.NewBuffer([]byte{}), Render: render, Reader: nil}
+		m.projects[i].Scripts = append(m.projects[i].Scripts, cmd)
+	}
+	return m
+}
+
+func (m *model) AddOptionalCommand(shouldAdd func(types.Project) bool, render func(*types.Command) string, script string, args ...string) *model {
+	for i, proj := range m.projects {
+		if shouldAdd(proj) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cmd := &types.Command{Script: script, Args: args, Status: "running", Ctx: ctx, Cancel: cancel, Output: bytes.NewBuffer([]byte{}), Render: render, Reader: nil}
+
+			m.projects[i].Scripts = append(m.projects[i].Scripts, cmd)
+		}
 	}
 	return m
 }
@@ -312,18 +303,18 @@ func (m *model) Init() tea.Cmd {
 		m.stopwatch.Init(),
 	}
 	for i, proj := range m.projects {
-		cmds = append(cmds, proj.spinner.Tick)
-		for j, script := range proj.scripts {
+		cmds = append(cmds, proj.Spinner.Tick)
+		for j, script := range proj.Scripts {
 			m.cmdWg.Add(1)
 			cmds = append(
 				cmds,
 				runCommand(
-					script.ctx,
+					script.Ctx,
 					&m.cmdWg,
 					i,
 					proj,
 					j,
-					m.projects[i].scripts[j],
+					m.projects[i].Scripts[j],
 				),
 			)
 
@@ -359,7 +350,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds := []tea.Cmd{stopwatchCmd}
 		for i, proj := range m.projects {
 			var cmd tea.Cmd
-			m.projects[i].spinner, cmd = proj.spinner.Update(msg)
+			m.projects[i].Spinner, cmd = proj.Spinner.Update(msg)
 			cmds = append(cmds, cmd)
 		}
 		return m, tea.Batch(cmds...)
@@ -375,22 +366,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.projects[msg.index].scripts[msg.scriptIndex].status = status
+		m.projects[msg.index].Scripts[msg.scriptIndex].Status = status
 		success := true
 		m.done = true
 
-		if utils.Some(m.projects, func(project Project) bool {
-			return utils.Some(project.scripts, func(script *Command) bool {
-				return script.status == "running"
+		if utils.Some(m.projects, func(project types.Project) bool {
+			return utils.Some(project.Scripts, func(script *types.Command) bool {
+				return script.Status == "running"
 			})
 		}) {
 			m.done = false
 			return m, nil
 		}
 
-		if utils.Some(m.projects, func(project Project) bool {
-			return utils.Some(project.scripts, func(script *Command) bool {
-				return script.status == "failed"
+		if utils.Some(m.projects, func(project types.Project) bool {
+			return utils.Some(project.Scripts, func(script *types.Command) bool {
+				return script.Status == "failed"
 			})
 		}) {
 			success = false
@@ -411,8 +402,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) CancelScripts() {
 	for _, p := range m.projects {
-		for _, c := range p.scripts {
-			c.cancel()
+		for _, c := range p.Scripts {
+			c.Cancel()
 		}
 	}
 
@@ -424,13 +415,14 @@ func (m *model) View() (s string) {
 	s += fmt.Sprintf("%s  %s\n\n", title.Render("QK Command Runner"), subtitle.Render("v0.1.0"))
 
 	for _, proj := range m.projects {
-		allFinished := utils.All(proj.scripts, func(script *Command) bool {
-			return script.status == "failed" || script.status == "finished"
+		allFinished := utils.All(proj.Scripts, func(script *types.Command) bool {
+			return script.Status == "failed" || script.Status == "finished"
 		})
-		hasError := utils.Some(proj.scripts, func(script *Command) bool {
-			return script.status == "failed"
+
+		hasError := utils.Some(proj.Scripts, func(script *types.Command) bool {
+			return script.Status == "failed"
 		})
-		spin := proj.spinner.View()
+		spin := proj.Spinner.View()
 
 		if hasError {
 			spin = cross
@@ -438,19 +430,19 @@ func (m *model) View() (s string) {
 			spin = checkMark
 		}
 
-		name := projectStyle(proj.name)
+		name := projectStyle(proj.Name)
 		if allFinished && !hasError {
-			name = projectDone(proj.name)
+			name = projectDone(proj.Name)
 		}
 
 		s += fmt.Sprintf("%s%s%s\n", spin, gap, name)
 		if ((!allFinished || hasError) && (m.showScripts || m.done)) || m.showStdout {
-			for i, script := range proj.scripts {
+			for i, script := range proj.Scripts {
 				if m.done || m.showScripts {
 					if i > 0 {
 						s += divider
 					}
-					s += fmt.Sprintf("   %s", script.render(script))
+					s += fmt.Sprintf("   %s", script.Render(script))
 				}
 			}
 			s += "\n"

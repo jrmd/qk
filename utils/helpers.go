@@ -10,6 +10,8 @@ import (
 	"os"
 	"path"
 	"slices"
+
+	"jrmd.dev/qk/types"
 )
 
 type File struct {
@@ -111,4 +113,15 @@ func Some[T any](ts []T, pred func(T) bool) bool {
 		}
 	}
 	return false
+}
+
+func HasYarn(project types.Project) bool {
+	exists, _ := FileExists(path.Join(project.Dir, "yarn.lock"))
+	return exists
+}
+
+func Not[T any](pred func(T) bool) func(T) bool {
+	return func (thing T) bool {
+		return ! pred(thing)
+	}
 }

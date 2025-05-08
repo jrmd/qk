@@ -5,9 +5,12 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
-	"jrmd.dev/qk/views"
 	"os"
+
+	"github.com/spf13/cobra"
+	"jrmd.dev/qk/utils"
+	"jrmd.dev/qk/views"
+	"jrmd.dev/qk/types"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -25,9 +28,9 @@ var (
 	errorText     = lipgloss.NewStyle().Foreground(errColor)
 )
 
-func RenderCommand(name string) func(*views.Command) string {
-	return func(c *views.Command) string {
-		stat := c.Status()
+func RenderCommand(name string) func(*types.Command) string {
+	return func(c *types.Command) string {
+		stat := c.Status
 		status := stat
 		switch stat {
 		case "finished":
@@ -47,7 +50,8 @@ var installCmd = &cobra.Command{
 	Short:   "runs yarn and composer install across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		m := views.CreateCommandRunner()
-		m.AddCommand(RenderCommand("yarn"), "yarn").
+		m.AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn").
+			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "install").
 			AddCommand(RenderCommand("composer"), "composer", "install")
 
 		if _, err := tea.NewProgram(&m).Run(); err != nil {

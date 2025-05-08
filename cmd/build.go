@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"jrmd.dev/qk/utils"
 	"jrmd.dev/qk/views"
 )
 
@@ -19,7 +20,8 @@ var buildCmd = &cobra.Command{
 	Short:   "Runs yarn build:prod across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		m := views.CreateCommandRunner()
-		m.AddCommand(RenderCommand("yarn"), "yarn", "build:prod")
+		m.AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn", "build:prod").
+			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "run", "build:prod")
 
 		if _, err := tea.NewProgram(&m).Run(); err != nil {
 			fmt.Println("could not run program:", err)

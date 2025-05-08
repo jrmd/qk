@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"jrmd.dev/qk/views"
+	"jrmd.dev/qk/utils"
 )
 
 // buildCmd represents the build command
@@ -19,8 +20,8 @@ var watchCommand = &cobra.Command{
 	Short:   "Runs yarn start across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		m := views.CreateCommandRunner()
-		m.AddCommand(RenderCommand("yarn"), "yarn", "start")
-
+		m.AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn", "start").
+			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "run", "start")
 		if _, err := tea.NewProgram(&m).Run(); err != nil {
 			fmt.Println("could not run program:", err)
 			os.Exit(1)
