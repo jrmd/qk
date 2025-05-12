@@ -13,21 +13,19 @@ import (
 )
 
 // cmdCmd represents the cmd command
-var cmdCmd = &cobra.Command{
-	Use:     "cmd",
-	Short:   "run a custom command across all projects",
-	Long:    `This command runs your custom command in all project folders`,
+var yarnCmd = &cobra.Command{
+	Use:     "yarn",
+	Aliases: []string{"y"},
+	Short:   "run a yarn command across all projects",
+	Long:    `This command runs your yarn command in all project folders`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			fmt.Println("Provide a command...")
 			os.Exit(1)
 		}
 
-		c := args[0]
-		arg := args[1:]
-
 		m := views.CreateCommandRunner()
-		m.AddCommand(RenderCommand(c), c, arg...)
+		m.AddCommand(RenderCommand("yarn"), "yarn", args...)
 
 		if _, err := tea.NewProgram(&m).Run(); err != nil {
 			fmt.Println("could not run program:", err)
@@ -37,7 +35,7 @@ var cmdCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(cmdCmd)
+	rootCmd.AddCommand(yarnCmd)
 
 	// Here you will define your flags and configuration settings.
 
