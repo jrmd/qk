@@ -343,9 +343,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, stopwatchCmd
-	case stopwatch.TickMsg:
-		m.stopwatch, stopwatchCmd = m.stopwatch.Update(msg)
-		return m, stopwatchCmd
 	case spinner.TickMsg:
 		cmds := []tea.Cmd{stopwatchCmd}
 		for i, proj := range m.projects {
