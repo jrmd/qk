@@ -4,8 +4,10 @@ Copyright © 2025 Jerome Duncan <jerome@jrmd.dev>
 package cmd
 
 import (
+	"context"
 	"os"
 
+	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +23,7 @@ var rootCmd = &cobra.Command{
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	err := rootCmd.Execute()
+	err := fang.Execute(context.TODO(), rootCmd)
 	if err != nil {
 		os.Exit(1)
 	}

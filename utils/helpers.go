@@ -22,10 +22,11 @@ type File struct {
 type Config struct {
 	ShowTimer   bool
 	ShowScripts bool
+	ShowStdout  bool
 }
 
 func GetConfig() Config {
-	cfg := Config{true, true}
+	cfg := Config{true, true, false}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return cfg
@@ -121,7 +122,7 @@ func HasYarn(project types.Project) bool {
 }
 
 func Not[T any](pred func(T) bool) func(T) bool {
-	return func (thing T) bool {
-		return ! pred(thing)
+	return func(thing T) bool {
+		return !pred(thing)
 	}
 }

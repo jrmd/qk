@@ -119,6 +119,12 @@ var keys = keyMap{
 	),
 }
 
+type commandOutputMessage struct {
+	index       int
+	scriptIndex int
+	output      string
+}
+
 type commandFinishedMessage struct {
 	index       int
 	scriptIndex int
@@ -129,56 +135,78 @@ type programDoneMessage struct {
 	err     error
 }
 
-func runCommand(ctx context.Context, wg *sync.WaitGroup, projIndex int, project types.Project, scriptIndex int, command *types.Command) tea.Cmd {
+func runCommand(ctx context.Context, wg *sync.WaitGroup, program *tea.Program, projIndex int, project types.Project, scriptIndex int, command *types.Command) tea.Cmd {
 	return func() tea.Msg {
-		// Decrement the counter when the command function finishes,
-		// regardless of success, failure, or cancellation.
 		defer wg.Done()
 
-		// Create the command with the context
-		c := exec.CommandContext(ctx, command.Script, command.Args...) //nolint:gosec
+		c := exec.CommandContext(ctx, command.Script, command.Args...)
 		c.Dir = project.Dir
-		c.Stderr = nil
 		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-		cmdReader, err := c.StdoutPipe()
+		stdout, err := c.StdoutPipe()
 		if err != nil {
 			return commandFinishedMessage{projIndex, scriptIndex, err}
 		}
 
-		scanner := bufio.NewScanner(cmdReader)
-		command.Reader = scanner
-
-		err = c.Start()
+		stderr, err := c.StderrPipe()
 		if err != nil {
+			return commandFinishedMessage{projIndex, scriptIndex, err}
+		}
+
+		if err := c.Start(); err != nil {
 			return commandFinishedMessage{projIndex, scriptIndex, err}
 		}
 
 		pid := c.Process.Pid
 
+		// Start goroutines to stream output
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					line := scanner.Text()
+					command.Output.WriteString(line + "\n")
+					// Send the message to the program
+					program.Send(commandOutputMessage{projIndex, scriptIndex, line})
+				}
+			}
+		}()
+
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					line := scanner.Text()
+					command.Output.WriteString(line + "\n")
+					// Send the message to the program
+					program.Send(commandOutputMessage{projIndex, scriptIndex, line})
+				}
+			}
+		}()
+
+		// Handle process termination
 		waitChan := make(chan error, 1)
 		go func() {
 			select {
 			case <-ctx.Done():
-				_ = syscall.Kill(-pid, syscall.SIGTERM) // Ignore error for simplicity here, add checks if needed
-				time.Sleep(100 * time.Millisecond)      // Give grace period
-				_ = syscall.Kill(-pid, syscall.SIGKILL) // Force kill
+				_ = syscall.Kill(-pid, syscall.SIGTERM)
+				time.Sleep(100 * time.Millisecond)
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
 				waitChan <- ctx.Err()
-
 			case errWait := <-waitChan:
-				// Forward result from c.Wait()
 				waitChan <- errWait
 				return
 			}
 		}()
 
 		errWait := c.Wait()
-		// Send the result from c.Wait() to the select goroutine.
-		// If context was cancelled first, this send might block briefly until
-		// the ctx.Done() case reads from waitChan, but that's okay.
 		waitChan <- errWait
-
-		// Read the prioritized result (either ctx.Err() or errWait)
 		finalErr := <-waitChan
 
 		return commandFinishedMessage{projIndex, scriptIndex, finalErr}
@@ -223,7 +251,9 @@ func done(success bool) tea.Cmd {
 }
 
 type model struct {
+	program       *tea.Program
 	projects      []types.Project
+	liveOutput    map[string][]string // key: "projIndex-scriptIndex"
 	start         time.Time
 	finish        time.Time
 	done          bool
@@ -245,6 +275,11 @@ func CreateCommandRunner() model {
 	}
 
 	projects := utils.GetAllProjects(wd, 0)
+
+	if len(projects) == 0 {
+		fmt.Println(lipgloss.NewStyle().Foreground(errColor).Render("Error: no projects found!"))
+		os.Exit(1)
+	}
 
 	projs := []types.Project{}
 
@@ -272,9 +307,28 @@ func CreateCommandRunner() model {
 		help:          help.New(),
 		showStopwatch: conf.ShowTimer,
 		showScripts:   conf.ShowScripts,
+		showStdout:    conf.ShowStdout,
 		ctx:           ctx,
 		cancel:        cancel,
+		liveOutput:    make(map[string][]string),
 	}
+}
+
+func (m *model) SetProgram(p *tea.Program) *model {
+	m.program = p
+	return m
+}
+
+func (m *model) Run() {
+	p := tea.NewProgram(m)
+	m.SetProgram(p)
+
+	if _, err := p.Run(); err != nil {
+		fmt.Println("could not run program:", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(m.Output(0))
 }
 
 func (m *model) AddCommand(render func(*types.Command) string, script string, args ...string) *model {
@@ -311,6 +365,7 @@ func (m *model) Init() tea.Cmd {
 				runCommand(
 					script.Ctx,
 					&m.cmdWg,
+					m.program,
 					i,
 					proj,
 					j,
@@ -392,6 +447,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case programDoneMessage:
 		m.CancelScripts()
 		return m, tea.Quit
+	case commandOutputMessage:
+		key := fmt.Sprintf("%d-%d", msg.index, msg.scriptIndex)
+		if m.liveOutput[key] == nil {
+			m.liveOutput[key] = []string{}
+		}
+		m.liveOutput[key] = append(m.liveOutput[key], msg.output)
+
+		// Keep only last N lines to prevent memory issues
+		maxLines := 50
+		if len(m.liveOutput[key]) > maxLines {
+			m.liveOutput[key] = m.liveOutput[key][len(m.liveOutput[key])-maxLines:]
+		}
+
+		return m, stopwatchCmd
 	default:
 		return m, stopwatchCmd
 	}
@@ -406,12 +475,12 @@ func (m *model) CancelScripts() {
 
 }
 
-func (m *model) View() (s string) {
+func (m *model) Output(maxLines int) (s string) {
 	gap := " "
 
 	s += fmt.Sprintf("%s  %s\n\n", title.Render("QK Command Runner"), subtitle.Render("v0.1.0"))
 
-	for _, proj := range m.projects {
+	for i, proj := range m.projects {
 		allFinished := utils.All(proj.Scripts, func(script *types.Command) bool {
 			return script.Status == "failed" || script.Status == "finished"
 		})
@@ -433,21 +502,42 @@ func (m *model) View() (s string) {
 		}
 
 		s += fmt.Sprintf("%s%s%s\n", spin, gap, name)
+
 		if ((!allFinished || hasError) && (m.showScripts || m.done)) || m.showStdout {
-			for i, script := range proj.Scripts {
+			for j, script := range proj.Scripts {
 				if m.done || m.showScripts {
-					if i > 0 {
+					if j > 0 {
 						s += divider
 					}
 					s += fmt.Sprintf("   %s", script.Render(script))
 				}
+
+				// Show live output if debug mode is on
+				if m.showStdout {
+					key := fmt.Sprintf("%d-%d", i, j)
+					stdOut := ""
+					if output, exists := m.liveOutput[key]; exists && len(output) > 0 {
+						data := output
+						if maxLines > 0 && len(data) > maxLines {
+							data = output[len(data)-maxLines:]
+						}
+
+						for _, line := range data {
+							stdOut += fmt.Sprintf("     %s\n",
+								lipgloss.NewStyle().
+									Foreground(normal).
+									Render(line))
+						}
+					}
+
+					if len(stdOut) > 0 {
+						s += "\n"
+						s += stdOut
+					}
+				}
 			}
 			s += "\n"
 		}
-	}
-
-	if m.showStdout {
-		s += "showing stdout\n"
 	}
 
 	if m.done {
@@ -461,4 +551,13 @@ func (m *model) View() (s string) {
 	}
 
 	return s
+
+}
+
+func (m *model) View() (s string) {
+	if m.done {
+		return s
+	}
+
+	return m.Output(10)
 }

@@ -5,15 +5,12 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"jrmd.dev/qk/types"
 	"jrmd.dev/qk/utils"
 	"jrmd.dev/qk/views"
-	"jrmd.dev/qk/types"
-
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 var (
@@ -50,14 +47,11 @@ var installCmd = &cobra.Command{
 	Short:   "runs yarn and composer install across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		m := views.CreateCommandRunner()
-		m.AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn").
+		m.
+			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "install").
-			AddCommand(RenderCommand("composer"), "composer", "install")
-
-		if _, err := tea.NewProgram(&m).Run(); err != nil {
-			fmt.Println("could not run program:", err)
-			os.Exit(1)
-		}
+			AddCommand(RenderCommand("composer"), "composer", "install").
+			Run()
 	},
 }
 

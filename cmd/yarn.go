@@ -5,8 +5,6 @@ package cmd
 
 import (
 	"fmt"
-
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"jrmd.dev/qk/views"
 	"os"
@@ -25,12 +23,9 @@ var yarnCmd = &cobra.Command{
 		}
 
 		m := views.CreateCommandRunner()
-		m.AddCommand(RenderCommand("yarn"), "yarn", args...)
-
-		if _, err := tea.NewProgram(&m).Run(); err != nil {
-			fmt.Println("could not run program:", err)
-			os.Exit(1)
-		}
+		m.
+			AddCommand(RenderCommand("yarn"), "yarn", args...).
+			Run()
 	},
 }
 

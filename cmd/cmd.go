@@ -5,8 +5,6 @@ package cmd
 
 import (
 	"fmt"
-
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"jrmd.dev/qk/views"
 	"os"
@@ -14,9 +12,9 @@ import (
 
 // cmdCmd represents the cmd command
 var cmdCmd = &cobra.Command{
-	Use:     "cmd",
-	Short:   "run a custom command across all projects",
-	Long:    `This command runs your custom command in all project folders`,
+	Use:   "cmd",
+	Short: "run a custom command across all projects",
+	Long:  `This command runs your custom command in all project folders`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			fmt.Println("Provide a command...")
@@ -27,12 +25,9 @@ var cmdCmd = &cobra.Command{
 		arg := args[1:]
 
 		m := views.CreateCommandRunner()
-		m.AddCommand(RenderCommand(c), c, arg...)
-
-		if _, err := tea.NewProgram(&m).Run(); err != nil {
-			fmt.Println("could not run program:", err)
-			os.Exit(1)
-		}
+		m.
+			AddCommand(RenderCommand(c), c, arg...).
+			Run()
 	},
 }
 
