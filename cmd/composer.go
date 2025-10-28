@@ -22,7 +22,8 @@ var composerCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		m := views.CreateCommandRunner()
+		depth, _ := cmd.Flags().GetInt("depth");
+		m := views.CreateCommandRunner(depth)
 		m.
 			AddCommand(RenderCommand("composer"), "composer", args...).
 			Run()

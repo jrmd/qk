@@ -15,7 +15,8 @@ var buildCmd = &cobra.Command{
 	Aliases: []string{"b"},
 	Short:   "Runs yarn build:prod across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
-		m := views.CreateCommandRunner()
+		depth, _ := cmd.Flags().GetInt("depth");
+		m := views.CreateCommandRunner(depth)
 		m.
 			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn", "build:prod").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "run", "build:prod").

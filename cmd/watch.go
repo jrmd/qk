@@ -15,10 +15,71 @@ var watchCommand = &cobra.Command{
 	Aliases: []string{"w"},
 	Short:   "Runs yarn start across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
-		m := views.CreateCommandRunner()
+		depth, _ := cmd.Flags().GetInt("depth");
+		m := views.CreateCommandRunner(depth)
+
 		m.
-			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn", "start").
-			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "run", "start").
+			AddOptionalCommand(
+			utils.And(
+				utils.HasYarn, 
+					utils.HasScript("start"), 
+					utils.Not(utils.HasScript("watch:dev")),
+					utils.Not(utils.HasScript("dev")),
+				), 
+				RenderCommand("yarn"), 
+				"yarn", 
+				"start",
+			).
+			AddOptionalCommand(
+				utils.And(
+					utils.Not(utils.HasYarn), 
+					utils.HasScript("start"),
+					utils.Not(utils.HasScript("watch:dev")),
+					utils.Not(utils.HasScript("dev")),
+				), 
+				RenderCommand("npm"), 
+				"npm", 
+				"run", 
+				"start",
+			).
+			AddOptionalCommand(
+			utils.And(
+				utils.HasYarn, 
+					utils.HasScript("watch:dev"), 
+				), 
+				RenderCommand("yarn"), 
+				"yarn", 
+				"watch:dev",
+			).
+			AddOptionalCommand(
+				utils.And(
+					utils.Not(utils.HasYarn), 
+					utils.HasScript("watch:dev"),
+				), 
+				RenderCommand("npm"), 
+				"npm", 
+				"run", 
+				"watch:dev",
+			).
+			AddOptionalCommand(
+			utils.And(
+				utils.HasYarn, 
+					utils.HasScript("dev"), 
+				), 
+				RenderCommand("yarn"), 
+				"yarn", 
+				"dev",
+			).
+			AddOptionalCommand(
+				utils.And(
+					utils.Not(utils.HasYarn), 
+					utils.HasScript("dev"),
+				), 
+				RenderCommand("npm"), 
+				"npm", 
+				"run", 
+				"dev",
+			).
 			Run()
 	},
 }

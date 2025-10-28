@@ -46,7 +46,8 @@ var installCmd = &cobra.Command{
 	Aliases: []string{"i"},
 	Short:   "runs yarn and composer install across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
-		m := views.CreateCommandRunner()
+		depth, _ := cmd.Flags().GetInt("depth");
+		m := views.CreateCommandRunner(depth)
 		m.
 			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "install").

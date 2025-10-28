@@ -31,4 +31,5 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.PersistentFlags().Int("depth", 3, "number of directories to traverse")
 }

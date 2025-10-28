@@ -24,7 +24,8 @@ var cmdCmd = &cobra.Command{
 		c := args[0]
 		arg := args[1:]
 
-		m := views.CreateCommandRunner()
+		depth, _ := cmd.Flags().GetInt("depth");
+		m := views.CreateCommandRunner(depth)
 		m.
 			AddCommand(RenderCommand(c), c, arg...).
 			Run()

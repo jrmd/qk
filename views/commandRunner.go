@@ -266,15 +266,16 @@ type model struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	cmdWg         sync.WaitGroup // Add WaitGroup to track running commands
+	depth         int
 }
 
-func CreateCommandRunner() model {
+func CreateCommandRunner(depth int) model {
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
-	projects := utils.GetAllProjects(wd, 0)
+	projects := utils.GetAllProjects(wd, depth, 0)
 
 	if len(projects) == 0 {
 		fmt.Println(lipgloss.NewStyle().Foreground(errColor).Render("Error: no projects found!"))
@@ -311,6 +312,7 @@ func CreateCommandRunner() model {
 		ctx:           ctx,
 		cancel:        cancel,
 		liveOutput:    make(map[string][]string),
+		depth: depth,
 	}
 }
 
@@ -506,7 +508,7 @@ func (m *model) Output(maxLines int) (s string) {
 		if ((!allFinished || hasError) && (m.showScripts || m.done)) || m.showStdout {
 			for j, script := range proj.Scripts {
 				if m.done || m.showScripts {
-					if j > 0 {
+					if j > 0 && !m.showStdout {
 						s += divider
 					}
 					s += fmt.Sprintf("   %s", script.Render(script))

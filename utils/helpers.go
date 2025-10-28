@@ -25,6 +25,10 @@ type Config struct {
 	ShowStdout  bool
 }
 
+type PackageJSON struct {
+	Scripts map[string]string `json:"scripts"`
+}
+
 func GetConfig() Config {
 	cfg := Config{true, true, false}
 	home, err := os.UserHomeDir()
@@ -48,8 +52,7 @@ func GetConfig() Config {
 
 var BLACKLIST = []string{"node_modules", ".git", ".idea", "vendor"}
 
-func GetAllProjects(dir string, level int) []File {
-
+func GetAllProjects(dir string, depth int, level int) []File {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Fatal(err)
@@ -68,10 +71,14 @@ func GetAllProjects(dir string, level int) []File {
 
 		projectDir := path.Join(dir, file.Name())
 
-		if !IsProject(projectDir) {
-			if level < 3 && !slices.Contains(BLACKLIST, file.Name()) {
-				projects = append(projects, GetAllProjects(projectDir, level+1)...)
+		if !IsProject(projectDir) && ( depth == -1 || level <= depth ) {
+			if !slices.Contains(BLACKLIST, file.Name()) {
+				projects = append(projects, GetAllProjects(projectDir, depth, level + 1)...)
 			}
+			continue
+		}
+
+		if depth != -1 && level >= depth {
 			continue
 		}
 
@@ -124,5 +131,27 @@ func HasYarn(project types.Project) bool {
 func Not[T any](pred func(T) bool) func(T) bool {
 	return func(thing T) bool {
 		return !pred(thing)
+	}
+}
+
+func And[T any](preds ...func(T) bool) func(T) bool {
+	return func(thing T) bool {
+		return All(preds, func (pred func(T) bool) bool {
+			return pred(thing)
+		})
+	}
+}
+
+func HasScript(script string) func(p types.Project) bool {
+	return func (project types.Project) bool {
+		file, err := os.ReadFile(path.Join(project.Dir, "package.json"))
+		if err != nil {
+			return false
+		}
+		pkg := PackageJSON{}
+		_ = json.Unmarshal(file, &pkg)
+		_, exists := pkg.Scripts[script]
+
+		return exists
 	}
 }
