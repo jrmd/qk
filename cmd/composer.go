@@ -33,7 +33,7 @@ var composerCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(composerCmd)
-	composerCmd.Flags().BoolP("joined", "j", true, "Joined output")
+	composerCmd.Flags().BoolP("joined", "j", false, "Joined output")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

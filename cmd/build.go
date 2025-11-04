@@ -27,7 +27,7 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(buildCmd)
-	buildCmd.Flags().BoolP("joined", "j", true, "Joined output")
+	buildCmd.Flags().BoolP("joined", "j", false, "Joined output")
 
 	// Here you will define your flags and configuration settings.
 

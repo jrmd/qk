@@ -17,7 +17,9 @@ var rootCmd = &cobra.Command{
 	Short: "QK Command runner cli tool",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		devCmd.Run(cmd, args)
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -30,6 +32,6 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.Flags().BoolP("joined", "j", true, "Joined output")
 	rootCmd.PersistentFlags().Int("depth", 3, "number of directories to traverse")
 }
