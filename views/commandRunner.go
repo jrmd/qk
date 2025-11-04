@@ -71,6 +71,21 @@ var (
 			Foreground(accent).
 			Render(s)
 	}
+
+	projectListColours = []lipgloss.Color {
+		lipgloss.Color("#15ec75"),
+		lipgloss.Color("#8310ec"),
+		lipgloss.Color("#da50e1"),
+		lipgloss.Color("#edc43e"),
+		lipgloss.Color("#b14e86"),
+		lipgloss.Color("#0d6ce9"),
+		lipgloss.Color("#f66582"),
+	}
+
+	renderProjectName = func (s string, i int) string {
+		index := i % len(projectListColours)
+		return lipgloss.NewStyle().Foreground(projectListColours[index]).Render(s)	
+	}
 )
 
 type keyMap struct {
@@ -254,6 +269,7 @@ type model struct {
 	program       *tea.Program
 	projects      []types.Project
 	liveOutput    map[string][]string // key: "projIndex-scriptIndex"
+	joinedOutput  []outputLine
 	start         time.Time
 	finish        time.Time
 	done          bool
@@ -263,13 +279,19 @@ type model struct {
 	showStopwatch bool
 	showScripts   bool
 	showStdout    bool
+	showJoined    bool
 	ctx           context.Context
 	cancel        context.CancelFunc
 	cmdWg         sync.WaitGroup // Add WaitGroup to track running commands
 	depth         int
 }
 
-func CreateCommandRunner(depth int) model {
+type outputLine struct {
+	projectName string
+	content string
+}
+
+func CreateCommandRunner(depth int, showJoined bool) model {
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
@@ -309,9 +331,11 @@ func CreateCommandRunner(depth int) model {
 		showStopwatch: conf.ShowTimer,
 		showScripts:   conf.ShowScripts,
 		showStdout:    conf.ShowStdout,
+		showJoined:    showJoined,
 		ctx:           ctx,
 		cancel:        cancel,
 		liveOutput:    make(map[string][]string),
+		joinedOutput: []outputLine{},
 		depth: depth,
 	}
 }
@@ -333,7 +357,7 @@ func (m *model) Run() {
 	fmt.Print(m.Output(0))
 }
 
-func (m *model) AddCommand(render func(*types.Command) string, script string, args ...string) *model {
+func (m *model) AddCommand(render func(*types.Command, bool) string, script string, args ...string) *model {
 	for i := range m.projects {
 		ctx, cancel := context.WithCancel(context.Background())
 		cmd := &types.Command{Script: script, Args: args, Status: "running", Ctx: ctx, Cancel: cancel, Output: bytes.NewBuffer([]byte{}), Render: render, Reader: nil}
@@ -342,7 +366,7 @@ func (m *model) AddCommand(render func(*types.Command) string, script string, ar
 	return m
 }
 
-func (m *model) AddOptionalCommand(shouldAdd func(types.Project) bool, render func(*types.Command) string, script string, args ...string) *model {
+func (m *model) AddOptionalCommand(shouldAdd func(types.Project) bool, render func(*types.Command, bool) string, script string, args ...string) *model {
 	for i, proj := range m.projects {
 		if shouldAdd(proj) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -451,15 +475,27 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case commandOutputMessage:
 		key := fmt.Sprintf("%d-%d", msg.index, msg.scriptIndex)
-		if m.liveOutput[key] == nil {
-			m.liveOutput[key] = []string{}
-		}
-		m.liveOutput[key] = append(m.liveOutput[key], msg.output)
 
-		// Keep only last N lines to prevent memory issues
-		maxLines := 50
-		if len(m.liveOutput[key]) > maxLines {
-			m.liveOutput[key] = m.liveOutput[key][len(m.liveOutput[key])-maxLines:]
+		if m.showJoined {
+			m.joinedOutput = append(m.joinedOutput, outputLine {
+				projectName: fmt.Sprintf(
+					"%s (%s)", 
+					renderProjectName(m.projects[msg.index].Name, msg.index), 
+					m.projects[msg.index].Scripts[msg.scriptIndex].Render(m.projects[msg.index].Scripts[msg.scriptIndex], false),
+				),
+				content: msg.output,
+			})
+		} else {
+			if m.liveOutput[key] == nil {
+				m.liveOutput[key] = []string{}
+			}
+			m.liveOutput[key] = append(m.liveOutput[key], msg.output)
+
+			// Keep only last N lines to prevent memory issues
+			maxLines := 50
+			if len(m.liveOutput[key]) > maxLines {
+				m.liveOutput[key] = m.liveOutput[key][len(m.liveOutput[key])-maxLines:]
+			}
 		}
 
 		return m, stopwatchCmd
@@ -479,6 +515,13 @@ func (m *model) CancelScripts() {
 
 func (m *model) Output(maxLines int) (s string) {
 	gap := " "
+
+	if m.showJoined && !m.done {
+		for _, output := range m.joinedOutput {
+			s += fmt.Sprintf("%s: %s\n", output.projectName, output.content)
+		}
+		return s
+	}
 
 	s += fmt.Sprintf("%s  %s\n\n", title.Render("QK Command Runner"), subtitle.Render("v0.1.0"))
 
@@ -511,7 +554,7 @@ func (m *model) Output(maxLines int) (s string) {
 					if j > 0 && !m.showStdout {
 						s += divider
 					}
-					s += fmt.Sprintf("   %s", script.Render(script))
+					s += fmt.Sprintf("   %s", script.Render(script, true))
 				}
 
 				// Show live output if debug mode is on

@@ -25,7 +25,8 @@ var cmdCmd = &cobra.Command{
 		arg := args[1:]
 
 		depth, _ := cmd.Flags().GetInt("depth");
-		m := views.CreateCommandRunner(depth)
+		joined, _ := cmd.Flags().GetBool("joined");
+		m := views.CreateCommandRunner(depth, joined)
 		m.
 			AddCommand(RenderCommand(c), c, arg...).
 			Run()
@@ -34,6 +35,7 @@ var cmdCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(cmdCmd)
+	cmdCmd.Flags().BoolP("joined", "j", true, "Joined output")
 
 	// Here you will define your flags and configuration settings.
 

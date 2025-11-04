@@ -23,7 +23,9 @@ var yarnCmd = &cobra.Command{
 		}
 
 		depth, _ := cmd.Flags().GetInt("depth");
-		m := views.CreateCommandRunner(depth)
+		joined, _ := cmd.Flags().GetBool("joined");
+
+		m := views.CreateCommandRunner(depth, joined)
 		m.
 			AddCommand(RenderCommand("yarn"), "yarn", args...).
 			Run()
@@ -32,7 +34,8 @@ var yarnCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(yarnCmd)
-
+	yarnCmd.Flags().BoolP("joined", "j", true, "Joined output")
+	
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

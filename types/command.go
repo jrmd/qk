@@ -13,6 +13,6 @@ type Command struct {
 	Ctx    context.Context
 	Cancel context.CancelFunc
 	Output *bytes.Buffer
-	Render func(*Command) string
+	Render func(*Command, bool) string
 	Reader *bufio.Scanner
 }

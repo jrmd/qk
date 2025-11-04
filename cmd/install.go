@@ -25,8 +25,12 @@ var (
 	errorText     = lipgloss.NewStyle().Foreground(errColor)
 )
 
-func RenderCommand(name string) func(*types.Command) string {
-	return func(c *types.Command) string {
+func RenderCommand(name string) func(*types.Command, bool) string {
+	return func(c *types.Command, showStatus bool) string {
+		if !showStatus {
+			return highlightText.Render(name)
+		}
+
 		stat := c.Status
 		status := stat
 		switch stat {
@@ -47,7 +51,9 @@ var installCmd = &cobra.Command{
 	Short:   "runs yarn and composer install across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		depth, _ := cmd.Flags().GetInt("depth");
-		m := views.CreateCommandRunner(depth)
+		joined, _ := cmd.Flags().GetBool("joined");
+
+		m := views.CreateCommandRunner(depth, joined)
 		m.
 			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "install").
@@ -58,7 +64,7 @@ var installCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(installCmd)
-
+	installCmd.Flags().BoolP("joined", "j", true, "Joined output")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

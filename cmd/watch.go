@@ -16,68 +16,69 @@ var watchCommand = &cobra.Command{
 	Short:   "Runs yarn start across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		depth, _ := cmd.Flags().GetInt("depth");
-		m := views.CreateCommandRunner(depth)
+		joined, _ := cmd.Flags().GetBool("joined");
+		m := views.CreateCommandRunner(depth, joined)
 
 		m.
 			AddOptionalCommand(
 			utils.And(
-				utils.HasYarn, 
-					utils.HasScript("start"), 
-					utils.Not(utils.HasScript("watch:dev")),
-					utils.Not(utils.HasScript("dev")),
-				), 
-				RenderCommand("yarn"), 
-				"yarn", 
-				"start",
-			).
-			AddOptionalCommand(
-				utils.And(
-					utils.Not(utils.HasYarn), 
+				utils.HasYarn,
 					utils.HasScript("start"),
 					utils.Not(utils.HasScript("watch:dev")),
 					utils.Not(utils.HasScript("dev")),
-				), 
-				RenderCommand("npm"), 
-				"npm", 
-				"run", 
+				),
+				RenderCommand("yarn"),
+				"yarn",
+				"start",
+			).
+			AddOptionalCommand(
+				utils.And(
+					utils.Not(utils.HasYarn),
+					utils.HasScript("start"),
+					utils.Not(utils.HasScript("watch:dev")),
+					utils.Not(utils.HasScript("dev")),
+				),
+				RenderCommand("npm"),
+				"npm",
+				"run",
 				"start",
 			).
 			AddOptionalCommand(
 			utils.And(
-				utils.HasYarn, 
-					utils.HasScript("watch:dev"), 
-				), 
-				RenderCommand("yarn"), 
-				"yarn", 
+				utils.HasYarn,
+					utils.HasScript("watch:dev"),
+				),
+				RenderCommand("yarn"),
+				"yarn",
 				"watch:dev",
 			).
 			AddOptionalCommand(
 				utils.And(
-					utils.Not(utils.HasYarn), 
+					utils.Not(utils.HasYarn),
 					utils.HasScript("watch:dev"),
-				), 
-				RenderCommand("npm"), 
-				"npm", 
-				"run", 
+				),
+				RenderCommand("npm"),
+				"npm",
+				"run",
 				"watch:dev",
 			).
 			AddOptionalCommand(
 			utils.And(
-				utils.HasYarn, 
-					utils.HasScript("dev"), 
-				), 
-				RenderCommand("yarn"), 
-				"yarn", 
+				utils.HasYarn,
+					utils.HasScript("dev"),
+				),
+				RenderCommand("yarn"),
+				"yarn",
 				"dev",
 			).
 			AddOptionalCommand(
 				utils.And(
-					utils.Not(utils.HasYarn), 
+					utils.Not(utils.HasYarn),
 					utils.HasScript("dev"),
-				), 
-				RenderCommand("npm"), 
-				"npm", 
-				"run", 
+				),
+				RenderCommand("npm"),
+				"npm",
+				"run",
 				"dev",
 			).
 			Run()
@@ -86,7 +87,7 @@ var watchCommand = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(watchCommand)
-
+	watchCommand.Flags().BoolP("joined", "j", true, "Joined output")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

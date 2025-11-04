@@ -115,12 +115,7 @@ func All[T any](ts []T, pred func(T) bool) bool {
 }
 
 func Some[T any](ts []T, pred func(T) bool) bool {
-	for _, t := range ts {
-		if pred(t) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(ts, pred)
 }
 
 func HasYarn(project types.Project) bool {

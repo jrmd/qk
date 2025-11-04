@@ -16,7 +16,8 @@ var buildCmd = &cobra.Command{
 	Short:   "Runs yarn build:prod across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
 		depth, _ := cmd.Flags().GetInt("depth");
-		m := views.CreateCommandRunner(depth)
+		joined, _ := cmd.Flags().GetBool("joined");
+		m := views.CreateCommandRunner(depth, joined)
 		m.
 			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn", "build:prod").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "run", "build:prod").
@@ -26,6 +27,7 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(buildCmd)
+	buildCmd.Flags().BoolP("joined", "j", true, "Joined output")
 
 	// Here you will define your flags and configuration settings.
 
