@@ -17,7 +17,12 @@ var buildCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		depth, _ := cmd.Flags().GetInt("depth");
 		joined, _ := cmd.Flags().GetBool("joined");
-		m := views.CreateCommandRunner(depth, joined)
+		excludeCurrent, _ := cmd.Flags().GetBool("exclude-current");
+		m := views.CreateCommandRunner(views.CommandRunnerArgs{
+			Depth: depth,
+			ShowJoined: joined,
+			ExcludeCurrent: excludeCurrent,
+		})
 		m.
 			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn", "build:prod").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "run", "build:prod").
@@ -27,7 +32,6 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(buildCmd)
-	buildCmd.Flags().BoolP("joined", "j", false, "Joined output")
 
 	// Here you will define your flags and configuration settings.
 

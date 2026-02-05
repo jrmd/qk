@@ -15,10 +15,14 @@ var watchCommand = &cobra.Command{
 	Aliases: []string{"w"},
 	Short:   "Runs yarn start across all projects",
 	Run: func(cmd *cobra.Command, args []string) {
-		depth, _ := cmd.Flags().GetInt("depth");
+			depth, _ := cmd.Flags().GetInt("depth");
 		joined, _ := cmd.Flags().GetBool("joined");
-		m := views.CreateCommandRunner(depth, joined)
-
+		excludeCurrent, _ := cmd.Flags().GetBool("exclude-current");
+		m := views.CreateCommandRunner(views.CommandRunnerArgs{
+			Depth: depth,
+			ShowJoined: joined,
+			ExcludeCurrent: excludeCurrent,
+		})
 		m.
 			AddOptionalCommand(
 			utils.And(
@@ -87,7 +91,6 @@ var watchCommand = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(watchCommand)
-	watchCommand.Flags().BoolP("joined", "j", false, "Joined output")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

@@ -52,8 +52,12 @@ var installCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		depth, _ := cmd.Flags().GetInt("depth");
 		joined, _ := cmd.Flags().GetBool("joined");
-
-		m := views.CreateCommandRunner(depth, joined)
+		excludeCurrent, _ := cmd.Flags().GetBool("exclude-current");
+		m := views.CreateCommandRunner(views.CommandRunnerArgs{
+			Depth: depth,
+			ShowJoined: joined,
+			ExcludeCurrent: excludeCurrent,
+		})
 		m.
 			AddOptionalCommand(utils.HasYarn, RenderCommand("yarn"), "yarn").
 			AddOptionalCommand(utils.Not(utils.HasYarn), RenderCommand("npm"), "npm", "install").
@@ -64,7 +68,6 @@ var installCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(installCmd)
-	installCmd.Flags().BoolP("joined", "j", false, "Joined output")
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

@@ -26,9 +26,6 @@ to quickly create a Cobra application.`,
 
 func init() {
 	rootCmd.AddCommand(devCmd)
-
-	devCmd.Flags().BoolP("joined", "j", true, "Joined output")
-
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

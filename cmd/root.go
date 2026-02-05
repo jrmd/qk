@@ -32,6 +32,7 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.Flags().BoolP("joined", "j", true, "Joined output")
-	rootCmd.PersistentFlags().Int("depth", 3, "number of directories to traverse")
+	rootCmd.PersistentFlags().BoolP("joined", "j", true, "Joined output")
+	rootCmd.PersistentFlags().IntP("depth", "d", 3, "number of directories to traverse")
+	rootCmd.PersistentFlags().BoolP("exclude-current", "x", false, "exclude the current directory from the project build")
 }

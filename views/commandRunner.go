@@ -84,7 +84,7 @@ var (
 
 	renderProjectName = func (s string, i int) string {
 		index := i % len(projectListColours)
-		return lipgloss.NewStyle().Foreground(projectListColours[index]).Render(s)	
+		return lipgloss.NewStyle().Foreground(projectListColours[index]).Render(s)
 	}
 )
 
@@ -291,13 +291,19 @@ type outputLine struct {
 	content string
 }
 
-func CreateCommandRunner(depth int, showJoined bool) model {
+type CommandRunnerArgs struct {
+	Depth int
+	ShowJoined bool
+	ExcludeCurrent bool
+}
+
+func CreateCommandRunner(args CommandRunnerArgs) model {
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
 
-	projects := utils.GetAllProjects(wd, depth, 0)
+	projects := utils.GetAllProjects(wd, args.Depth, 0, args.ExcludeCurrent)
 
 	if len(projects) == 0 {
 		fmt.Println(lipgloss.NewStyle().Foreground(errColor).Render("Error: no projects found!"))
@@ -331,12 +337,12 @@ func CreateCommandRunner(depth int, showJoined bool) model {
 		showStopwatch: conf.ShowTimer,
 		showScripts:   conf.ShowScripts,
 		showStdout:    conf.ShowStdout,
-		showJoined:    showJoined,
+		showJoined:    args.ShowJoined,
 		ctx:           ctx,
 		cancel:        cancel,
 		liveOutput:    make(map[string][]string),
 		joinedOutput: []outputLine{},
-		depth: depth,
+		depth: args.Depth,
 	}
 }
 
@@ -479,8 +485,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showJoined {
 			m.joinedOutput = append(m.joinedOutput, outputLine {
 				projectName: fmt.Sprintf(
-					"%s (%s)", 
-					renderProjectName(m.projects[msg.index].Name, msg.index), 
+					"%s (%s)",
+					renderProjectName(m.projects[msg.index].Name, msg.index),
 					m.projects[msg.index].Scripts[msg.scriptIndex].Render(m.projects[msg.index].Scripts[msg.scriptIndex], false),
 				),
 				content: msg.output,
@@ -527,7 +533,7 @@ func (m *model) Output(maxLines int) (s string) {
 
 	for i, proj := range m.projects {
 		allFinished := utils.All(proj.Scripts, func(script *types.Command) bool {
-			return script.Status == "failed" || script.Status == "finished"
+			return script.Status == "failed" || script.Status == "finished" || script.Status == "exited"
 		})
 
 		hasError := utils.Some(proj.Scripts, func(script *types.Command) bool {

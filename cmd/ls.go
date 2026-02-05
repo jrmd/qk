@@ -34,8 +34,9 @@ var lsCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		depth, _ := cmd.Flags().GetInt("depth");
-		projects := utils.GetAllProjects(wd, depth, 0)
+		depth, _ := cmd.Flags().GetInt("depth")
+		excludeCurrent, _ := cmd.Flags().GetBool("exclude-current")
+		projects := utils.GetAllProjects(wd, depth, 0, excludeCurrent)
 		rows := [][]string{}
 		for _, project := range projects {
 			rows = append(rows, []string{project.Name})

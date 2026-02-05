@@ -22,10 +22,14 @@ var yarnCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		depth, _ := cmd.Flags().GetInt("depth");
+			depth, _ := cmd.Flags().GetInt("depth");
 		joined, _ := cmd.Flags().GetBool("joined");
-
-		m := views.CreateCommandRunner(depth, joined)
+		excludeCurrent, _ := cmd.Flags().GetBool("exclude-current");
+		m := views.CreateCommandRunner(views.CommandRunnerArgs{
+			Depth: depth,
+			ShowJoined: joined,
+			ExcludeCurrent: excludeCurrent,
+		})
 		m.
 			AddCommand(RenderCommand("yarn"), "yarn", args...).
 			Run()
@@ -34,7 +38,6 @@ var yarnCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(yarnCmd)
-	yarnCmd.Flags().BoolP("joined", "j", false, "Joined output")
 
 	// Here you will define your flags and configuration settings.
 

@@ -52,7 +52,7 @@ func GetConfig() Config {
 
 var BLACKLIST = []string{"node_modules", ".git", ".idea", "vendor"}
 
-func GetAllProjects(dir string, depth int, level int) []File {
+func GetAllProjects(dir string, depth int, level int, excludeCurrent bool) []File {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Fatal(err)
@@ -60,7 +60,7 @@ func GetAllProjects(dir string, depth int, level int) []File {
 
 	projects := []File{}
 
-	if IsProject(dir) {
+	if IsProject(dir) && !excludeCurrent {
 		projects = append(projects, File{path.Base(dir), dir})
 	}
 
@@ -73,7 +73,7 @@ func GetAllProjects(dir string, depth int, level int) []File {
 
 		if !IsProject(projectDir) && ( depth == -1 || level <= depth ) {
 			if !slices.Contains(BLACKLIST, file.Name()) {
-				projects = append(projects, GetAllProjects(projectDir, depth, level + 1)...)
+				projects = append(projects, GetAllProjects(projectDir, depth, level + 1, false)...)
 			}
 			continue
 		}
