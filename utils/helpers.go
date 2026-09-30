@@ -6,9 +6,8 @@ package utils
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"slices"
 
 	"jrmd.dev/qk/types"
@@ -36,11 +35,11 @@ func GetConfig() Config {
 		return cfg
 	}
 
-	if ok, err := FileExists(path.Join(home, ".qk.json")); !ok || err != nil {
+	if ok, err := FileExists(filepath.Join(home, ".qk.json")); !ok || err != nil {
 		return cfg
 	}
 
-	conf, err := os.ReadFile(path.Join(home, ".qk.json"))
+	conf, err := os.ReadFile(filepath.Join(home, ".qk.json"))
 
 	if err != nil {
 		return cfg
@@ -53,44 +52,45 @@ func GetConfig() Config {
 var BLACKLIST = []string{"node_modules", ".git", ".idea", "vendor"}
 
 func GetAllProjects(dir string, depth int, level int, excludeCurrent bool) []File {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		log.Fatal(err)
+	if depth < -1 || level < 0 {
+		return nil
 	}
 
 	projects := []File{}
-
 	if IsProject(dir) && !excludeCurrent {
-		projects = append(projects, File{path.Base(dir), dir})
+		projects = append(projects, File{filepath.Base(filepath.Clean(dir)), dir})
+	}
+
+	// A depth of zero searches only dir. A depth of -1 is unlimited.
+	if depth != -1 && level >= depth {
+		return projects
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return projects
 	}
 
 	for _, file := range files {
-		if !file.IsDir() {
+		if !file.IsDir() || slices.Contains(BLACKLIST, file.Name()) {
 			continue
 		}
 
-		projectDir := path.Join(dir, file.Name())
-
-		if !IsProject(projectDir) && ( depth == -1 || level <= depth ) {
-			if !slices.Contains(BLACKLIST, file.Name()) {
-				projects = append(projects, GetAllProjects(projectDir, depth, level + 1, false)...)
-			}
+		projectDir := filepath.Join(dir, file.Name())
+		if IsProject(projectDir) {
+			projects = append(projects, File{file.Name(), projectDir})
 			continue
 		}
 
-		if depth != -1 && level >= depth {
-			continue
-		}
-
-		projects = append(projects, File{file.Name(), projectDir})
+		projects = append(projects, GetAllProjects(projectDir, depth, level+1, false)...)
 	}
 
 	return projects
 }
 
 func IsProject(dir string) bool {
-	hasComposer, _ := FileExists(path.Join(dir, "composer.json"))
-	hasPackage, _ := FileExists(path.Join(dir, "package.json"))
+	hasComposer, _ := FileExists(filepath.Join(dir, "composer.json"))
+	hasPackage, _ := FileExists(filepath.Join(dir, "package.json"))
 	return hasComposer && hasPackage
 }
 
@@ -119,7 +119,7 @@ func Some[T any](ts []T, pred func(T) bool) bool {
 }
 
 func HasYarn(project types.Project) bool {
-	exists, _ := FileExists(path.Join(project.Dir, "yarn.lock"))
+	exists, _ := FileExists(filepath.Join(project.Dir, "yarn.lock"))
 	return exists
 }
 
@@ -131,15 +131,15 @@ func Not[T any](pred func(T) bool) func(T) bool {
 
 func And[T any](preds ...func(T) bool) func(T) bool {
 	return func(thing T) bool {
-		return All(preds, func (pred func(T) bool) bool {
+		return All(preds, func(pred func(T) bool) bool {
 			return pred(thing)
 		})
 	}
 }
 
 func HasScript(script string) func(p types.Project) bool {
-	return func (project types.Project) bool {
-		file, err := os.ReadFile(path.Join(project.Dir, "package.json"))
+	return func(project types.Project) bool {
+		file, err := os.ReadFile(filepath.Join(project.Dir, "package.json"))
 		if err != nil {
 			return false
 		}
